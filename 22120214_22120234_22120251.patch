@@ -1,0 +1,184 @@
+diff --git a/Makefile b/Makefile
+index 74e454f..2d9a763 100644
+--- a/Makefile
++++ b/Makefile
+@@ -194,6 +194,7 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_trace\
+ 
+ 
+ 
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 130d9ce..7a7164d 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -299,6 +299,9 @@ fork(void)
+   // copy saved user registers.
+   *(np->trapframe) = *(p->trapframe);
+ 
++  // copy trace mask
++  np->trace_mask = p->trace_mask;
++
+   // Cause fork to return 0 in the child.
+   np->trapframe->a0 = 0;
+ 
+diff --git a/kernel/proc.h b/kernel/proc.h
+index d021857..268c835 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -91,6 +91,7 @@ struct proc {
+   int killed;                  // If non-zero, have been killed
+   int xstate;                  // Exit status to be returned to parent's wait
+   int pid;                     // Process ID
++  int trace_mask;
+ 
+   // wait_lock must be held when using this:
+   struct proc *parent;         // Parent process
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..03ee457 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,6 +101,7 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_trace(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -126,6 +127,59 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_trace]   sys_trace,
++};
++
++char *syscall_names[] = {
++[SYS_fork]    "fork",
++[SYS_exit]    "exit",
++[SYS_wait]    "wait",
++[SYS_pipe]    "pipe",
++[SYS_read]    "read",
++[SYS_kill]    "kill",
++[SYS_exec]    "exec",
++[SYS_fstat]   "fstat",
++[SYS_chdir]   "chdir",
++[SYS_dup]     "dup",
++[SYS_getpid]  "getpid",
++[SYS_sbrk]    "sbrk",
++[SYS_sleep]   "sleep",
++[SYS_uptime]  "uptime",
++[SYS_open]    "open",
++[SYS_write]   "write",
++[SYS_mknod]   "mknod",
++[SYS_unlink]  "unlink",
++[SYS_link]    "link",
++[SYS_mkdir]   "mkdir",
++[SYS_close]   "close",
++[SYS_trace]   "trace",
++};
++
++int syscall_argcounts[] = {
++  0,  // placeholder for syscall 0
++  0,  // fork
++  1,  // exit
++  1,  // wait
++  1,  // pipe
++  3,  // read
++  1,  // kill
++  2,  // exec
++  2,  // fstat
++  1,  // chdir
++  1,  // dup
++  0,  // getpid
++  1,  // sbrk
++  1,  // sleep
++  0,  // uptime
++  2,  // open
++  3,  // write
++  3,  // mknod
++  1,  // unlink
++  2,  // link
++  1,  // mkdir
++  1,  // close
++  1,  // trace
++  0   // sysinfo
+ };
+ 
+ void
+@@ -136,9 +190,20 @@ syscall(void)
+ 
+   num = p->trapframe->a7;
+   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
++    uint64 tmp = p->trapframe->a0;
+     // Use num to lookup the system call function for num, call it,
+     // and store its return value in p->trapframe->a0
+     p->trapframe->a0 = syscalls[num]();
++
++    if (p->trace_mask & (1 << num)) {
++      printf("%d: syscall %s -> %ld", p->pid, syscall_names[num], p->trapframe->a0);
++
++      if (syscall_argcounts[num] > 0) printf(", params: %ld ", tmp);
++      if (syscall_argcounts[num] > 1) printf("%ld ", p->trapframe->a1);
++      if (syscall_argcounts[num] > 2) printf("%ld ", p->trapframe->a2);
++      printf("\n");
++    }
++
+   } else {
+     printf("%d %s: unknown sys call %d\n",
+             p->pid, p->name, num);
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..cc112b9 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,4 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_trace  22
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3b4d5bd..2a89b68 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -91,3 +91,17 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++uint64
++sys_trace(void)
++{
++  int mask;
++  struct proc *p = myproc();
++  argint(0, &mask);
++
++  if (mask < 0) return -1;
++
++  p->trace_mask = mask;
++
++  return 0;
++}
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index f16fe27..bd3b7f0 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -22,6 +22,7 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int trace(int);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..9c97b05 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,4 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("trace");
