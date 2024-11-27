@@ -1,184 +1,836 @@
+From abf1f3e7b06c20de2421fc5368a09de1eff09e39 Mon Sep 17 00:00:00 2001
+From: MyTruong2810 <xv6@Admin-PC.>
+Date: Wed, 27 Nov 2024 17:51:11 +0700
+Subject: [PATCH] add the sysinfo
+
+---
+ Makefile         |  4 +---
+ kernel/defs.h    |  3 +++
+ kernel/kalloc.c  | 15 +++++++++++++++
+ kernel/proc.c    | 25 +++++++++++++++++++++++++
+ kernel/syscall.c |  2 ++
+ kernel/syscall.h |  1 +
+ kernel/sysinfo.h |  6 +++---
+ kernel/sysproc.c |  7 +++++++
+ user/user.h      |  2 ++
+ user/usys.pl     |  1 +
+ 10 files changed, 60 insertions(+), 6 deletions(-)
+
 diff --git a/Makefile b/Makefile
-index 74e454f..2d9a763 100644
+index 2d9a763..4515355 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -194,6 +194,7 @@ UPROGS=\
- 	$U/_grind\
+@@ -195,9 +195,7 @@ UPROGS=\
  	$U/_wc\
  	$U/_zombie\
-+	$U/_trace\
+ 	$U/_trace\
+-
+-
+-
++	$U/_sysinfotest\
  
+ ifeq ($(LAB),syscall)
+ UPROGS += \
+diff --git a/kernel/defs.h b/kernel/defs.h
+index d1b6bb9..67cc67d 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,6 +63,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
++uint64          get_freemem(void);
  
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -106,6 +107,8 @@ void            yield(void);
+ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
++int             sysinfo(uint64 addr);
++uint64          get_nproc();
  
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 5247b91..3eedeed 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -91,3 +91,18 @@ kalloc(void)
+   return (void*)r;
+ }
+ 
++uint64
++get_freemem(void){
++  uint64 num_of_free_page;
++  num_of_free_page = 0;
++  struct run *r;
++  acquire(&kmem.lock);
++  r = kmem.freelist;
++  while (r){
++    r = r->next;
++    num_of_free_page += 1;
++    }
++    release(&kmem.lock);
++    return num_of_free_page * PGSIZE;
++}
++
 diff --git a/kernel/proc.c b/kernel/proc.c
-index 130d9ce..7a7164d 100644
+index 7a7164d..4bc2c2c 100644
 --- a/kernel/proc.c
 +++ b/kernel/proc.c
-@@ -299,6 +299,9 @@ fork(void)
-   // copy saved user registers.
-   *(np->trapframe) = *(p->trapframe);
+@@ -5,6 +5,7 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ #include "defs.h"
++#include "sysinfo.h"
  
-+  // copy trace mask
-+  np->trace_mask = p->trace_mask;
+ struct cpu cpus[NCPU];
+ 
+@@ -696,3 +697,27 @@ procdump(void)
+     printf("\n");
+   }
+ }
 +
-   // Cause fork to return 0 in the child.
-   np->trapframe->a0 = 0;
- 
-diff --git a/kernel/proc.h b/kernel/proc.h
-index d021857..268c835 100644
---- a/kernel/proc.h
-+++ b/kernel/proc.h
-@@ -91,6 +91,7 @@ struct proc {
-   int killed;                  // If non-zero, have been killed
-   int xstate;                  // Exit status to be returned to parent's wait
-   int pid;                     // Process ID
-+  int trace_mask;
- 
-   // wait_lock must be held when using this:
-   struct proc *parent;         // Parent process
++int
++sysinfo(uint64 addr){
++  struct proc *p = myproc();
++  struct sysinfo info;
++  info.freemem = get_freemem();
++  info.nproc = get_nproc();
++  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
++    return -1;
++return 0;
++}
++
++uint64
++get_nproc(){
++  uint64 num_of_proc_UNUSED;
++  num_of_proc_UNUSED = 0;
++  struct proc *p;
++  for(p = proc; p < &proc[NPROC]; p++) {
++    if (p->state != UNUSED){
++      num_of_proc_UNUSED += 1;
++    }
++  }
++  return num_of_proc_UNUSED;
++}
+\ No newline at end of file
 diff --git a/kernel/syscall.c b/kernel/syscall.c
-index ed65409..03ee457 100644
+index 03ee457..9c3a009 100644
 --- a/kernel/syscall.c
 +++ b/kernel/syscall.c
-@@ -101,6 +101,7 @@ extern uint64 sys_unlink(void);
- extern uint64 sys_link(void);
+@@ -102,6 +102,7 @@ extern uint64 sys_link(void);
  extern uint64 sys_mkdir(void);
  extern uint64 sys_close(void);
-+extern uint64 sys_trace(void);
+ extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
  
  // An array mapping syscall numbers from syscall.h
  // to the function that handles the system call.
-@@ -126,6 +127,59 @@ static uint64 (*syscalls[])(void) = {
- [SYS_link]    sys_link,
+@@ -128,6 +129,7 @@ static uint64 (*syscalls[])(void) = {
  [SYS_mkdir]   sys_mkdir,
  [SYS_close]   sys_close,
-+[SYS_trace]   sys_trace,
-+};
-+
-+char *syscall_names[] = {
-+[SYS_fork]    "fork",
-+[SYS_exit]    "exit",
-+[SYS_wait]    "wait",
-+[SYS_pipe]    "pipe",
-+[SYS_read]    "read",
-+[SYS_kill]    "kill",
-+[SYS_exec]    "exec",
-+[SYS_fstat]   "fstat",
-+[SYS_chdir]   "chdir",
-+[SYS_dup]     "dup",
-+[SYS_getpid]  "getpid",
-+[SYS_sbrk]    "sbrk",
-+[SYS_sleep]   "sleep",
-+[SYS_uptime]  "uptime",
-+[SYS_open]    "open",
-+[SYS_write]   "write",
-+[SYS_mknod]   "mknod",
-+[SYS_unlink]  "unlink",
-+[SYS_link]    "link",
-+[SYS_mkdir]   "mkdir",
-+[SYS_close]   "close",
-+[SYS_trace]   "trace",
-+};
-+
-+int syscall_argcounts[] = {
-+  0,  // placeholder for syscall 0
-+  0,  // fork
-+  1,  // exit
-+  1,  // wait
-+  1,  // pipe
-+  3,  // read
-+  1,  // kill
-+  2,  // exec
-+  2,  // fstat
-+  1,  // chdir
-+  1,  // dup
-+  0,  // getpid
-+  1,  // sbrk
-+  1,  // sleep
-+  0,  // uptime
-+  2,  // open
-+  3,  // write
-+  3,  // mknod
-+  1,  // unlink
-+  2,  // link
-+  1,  // mkdir
-+  1,  // close
-+  1,  // trace
-+  0   // sysinfo
+ [SYS_trace]   sys_trace,
++[SYS_sysinfo] sys_sysinfo,
  };
  
- void
-@@ -136,9 +190,20 @@ syscall(void)
- 
-   num = p->trapframe->a7;
-   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-+    uint64 tmp = p->trapframe->a0;
-     // Use num to lookup the system call function for num, call it,
-     // and store its return value in p->trapframe->a0
-     p->trapframe->a0 = syscalls[num]();
-+
-+    if (p->trace_mask & (1 << num)) {
-+      printf("%d: syscall %s -> %ld", p->pid, syscall_names[num], p->trapframe->a0);
-+
-+      if (syscall_argcounts[num] > 0) printf(", params: %ld ", tmp);
-+      if (syscall_argcounts[num] > 1) printf("%ld ", p->trapframe->a1);
-+      if (syscall_argcounts[num] > 2) printf("%ld ", p->trapframe->a2);
-+      printf("\n");
-+    }
-+
-   } else {
-     printf("%d %s: unknown sys call %d\n",
-             p->pid, p->name, num);
+ char *syscall_names[] = {
 diff --git a/kernel/syscall.h b/kernel/syscall.h
-index bc5f356..cc112b9 100644
+index cc112b9..e153363 100644
 --- a/kernel/syscall.h
 +++ b/kernel/syscall.h
-@@ -20,3 +20,4 @@
- #define SYS_link   19
+@@ -21,3 +21,4 @@
  #define SYS_mkdir  20
  #define SYS_close  21
-+#define SYS_trace  22
+ #define SYS_trace  22
++#define SYS_sysinfo 23
+\ No newline at end of file
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index fb878e6..d3d222d 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,4 +1,4 @@
+ struct sysinfo {
+-  uint64 freemem;   // amount of free memory (bytes)
+-  uint64 nproc;     // number of process
+-};
++    uint64 freemem;
++    uint64 nproc;
++};
+\ No newline at end of file
 diff --git a/kernel/sysproc.c b/kernel/sysproc.c
-index 3b4d5bd..2a89b68 100644
+index 2a89b68..f54e4ae 100644
 --- a/kernel/sysproc.c
 +++ b/kernel/sysproc.c
-@@ -91,3 +91,17 @@ sys_uptime(void)
-   release(&tickslock);
-   return xticks;
- }
+@@ -104,4 +104,11 @@ sys_trace(void)
+   p->trace_mask = mask;
+ 
+   return 0;
++}
 +
 +uint64
-+sys_trace(void)
-+{
-+  int mask;
-+  struct proc *p = myproc();
-+  argint(0, &mask);
-+
-+  if (mask < 0) return -1;
-+
-+  p->trace_mask = mask;
-+
-+  return 0;
-+}
++sys_sysinfo(void) {
++  uint64 si;
++  argaddr(0, &si);
++  return sysinfo(si);
+ }
 \ No newline at end of file
 diff --git a/user/user.h b/user/user.h
-index f16fe27..bd3b7f0 100644
+index bd3b7f0..6d83095 100644
 --- a/user/user.h
 +++ b/user/user.h
-@@ -22,6 +22,7 @@ int getpid(void);
- char* sbrk(int);
+@@ -1,4 +1,5 @@
+ struct stat;
++struct sysinfo;
+ 
+ // system calls
+ int fork(void);
+@@ -23,6 +24,7 @@ char* sbrk(int);
  int sleep(int);
  int uptime(void);
-+int trace(int);
+ int trace(int);
++int sysinfo(struct sysinfo*);
  
  // ulib.c
  int stat(const char*, struct stat*);
 diff --git a/user/usys.pl b/user/usys.pl
-index 01e426e..9c97b05 100755
+index 9c97b05..353a1f8 100755
 --- a/user/usys.pl
 +++ b/user/usys.pl
-@@ -36,3 +36,4 @@ entry("getpid");
- entry("sbrk");
+@@ -37,3 +37,4 @@ entry("sbrk");
  entry("sleep");
  entry("uptime");
-+entry("trace");
+ entry("trace");
++entry("sysinfo");
+\ No newline at end of file
+-- 
+2.43.0
+
+From abf1f3e7b06c20de2421fc5368a09de1eff09e39 Mon Sep 17 00:00:00 2001
+From: MyTruong2810 <xv6@Admin-PC.>
+Date: Wed, 27 Nov 2024 17:51:11 +0700
+Subject: [PATCH] add the sysinfo
+
+---
+ Makefile         |  4 +---
+ kernel/defs.h    |  3 +++
+ kernel/kalloc.c  | 15 +++++++++++++++
+ kernel/proc.c    | 25 +++++++++++++++++++++++++
+ kernel/syscall.c |  2 ++
+ kernel/syscall.h |  1 +
+ kernel/sysinfo.h |  6 +++---
+ kernel/sysproc.c |  7 +++++++
+ user/user.h      |  2 ++
+ user/usys.pl     |  1 +
+ 10 files changed, 60 insertions(+), 6 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 2d9a763..4515355 100644
+--- a/Makefile
++++ b/Makefile
+@@ -195,9 +195,7 @@ UPROGS=\
+ 	$U/_wc\
+ 	$U/_zombie\
+ 	$U/_trace\
+-
+-
+-
++	$U/_sysinfotest\
+ 
+ ifeq ($(LAB),syscall)
+ UPROGS += \
+diff --git a/kernel/defs.h b/kernel/defs.h
+index d1b6bb9..67cc67d 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,6 +63,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
++uint64          get_freemem(void);
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -106,6 +107,8 @@ void            yield(void);
+ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
++int             sysinfo(uint64 addr);
++uint64          get_nproc();
+ 
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 5247b91..3eedeed 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -91,3 +91,18 @@ kalloc(void)
+   return (void*)r;
+ }
+ 
++uint64
++get_freemem(void){
++  uint64 num_of_free_page;
++  num_of_free_page = 0;
++  struct run *r;
++  acquire(&kmem.lock);
++  r = kmem.freelist;
++  while (r){
++    r = r->next;
++    num_of_free_page += 1;
++    }
++    release(&kmem.lock);
++    return num_of_free_page * PGSIZE;
++}
++
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 7a7164d..4bc2c2c 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -5,6 +5,7 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ #include "defs.h"
++#include "sysinfo.h"
+ 
+ struct cpu cpus[NCPU];
+ 
+@@ -696,3 +697,27 @@ procdump(void)
+     printf("\n");
+   }
+ }
++
++int
++sysinfo(uint64 addr){
++  struct proc *p = myproc();
++  struct sysinfo info;
++  info.freemem = get_freemem();
++  info.nproc = get_nproc();
++  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
++    return -1;
++return 0;
++}
++
++uint64
++get_nproc(){
++  uint64 num_of_proc_UNUSED;
++  num_of_proc_UNUSED = 0;
++  struct proc *p;
++  for(p = proc; p < &proc[NPROC]; p++) {
++    if (p->state != UNUSED){
++      num_of_proc_UNUSED += 1;
++    }
++  }
++  return num_of_proc_UNUSED;
++}
+\ No newline at end of file
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index 03ee457..9c3a009 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -102,6 +102,7 @@ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
+ extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -128,6 +129,7 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
+ [SYS_trace]   sys_trace,
++[SYS_sysinfo] sys_sysinfo,
+ };
+ 
+ char *syscall_names[] = {
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index cc112b9..e153363 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -21,3 +21,4 @@
+ #define SYS_mkdir  20
+ #define SYS_close  21
+ #define SYS_trace  22
++#define SYS_sysinfo 23
+\ No newline at end of file
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index fb878e6..d3d222d 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,4 +1,4 @@
+ struct sysinfo {
+-  uint64 freemem;   // amount of free memory (bytes)
+-  uint64 nproc;     // number of process
+-};
++    uint64 freemem;
++    uint64 nproc;
++};
+\ No newline at end of file
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 2a89b68..f54e4ae 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -104,4 +104,11 @@ sys_trace(void)
+   p->trace_mask = mask;
+ 
+   return 0;
++}
++
++uint64
++sys_sysinfo(void) {
++  uint64 si;
++  argaddr(0, &si);
++  return sysinfo(si);
+ }
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index bd3b7f0..6d83095 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -1,4 +1,5 @@
+ struct stat;
++struct sysinfo;
+ 
+ // system calls
+ int fork(void);
+@@ -23,6 +24,7 @@ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+ int trace(int);
++int sysinfo(struct sysinfo*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 9c97b05..353a1f8 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -37,3 +37,4 @@ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
+ entry("trace");
++entry("sysinfo");
+\ No newline at end of file
+-- 
+2.43.0
+
+From abf1f3e7b06c20de2421fc5368a09de1eff09e39 Mon Sep 17 00:00:00 2001
+From: MyTruong2810 <xv6@Admin-PC.>
+Date: Wed, 27 Nov 2024 17:51:11 +0700
+Subject: [PATCH] add the sysinfo
+
+---
+ Makefile         |  4 +---
+ kernel/defs.h    |  3 +++
+ kernel/kalloc.c  | 15 +++++++++++++++
+ kernel/proc.c    | 25 +++++++++++++++++++++++++
+ kernel/syscall.c |  2 ++
+ kernel/syscall.h |  1 +
+ kernel/sysinfo.h |  6 +++---
+ kernel/sysproc.c |  7 +++++++
+ user/user.h      |  2 ++
+ user/usys.pl     |  1 +
+ 10 files changed, 60 insertions(+), 6 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 2d9a763..4515355 100644
+--- a/Makefile
++++ b/Makefile
+@@ -195,9 +195,7 @@ UPROGS=\
+ 	$U/_wc\
+ 	$U/_zombie\
+ 	$U/_trace\
+-
+-
+-
++	$U/_sysinfotest\
+ 
+ ifeq ($(LAB),syscall)
+ UPROGS += \
+diff --git a/kernel/defs.h b/kernel/defs.h
+index d1b6bb9..67cc67d 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,6 +63,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
++uint64          get_freemem(void);
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -106,6 +107,8 @@ void            yield(void);
+ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
++int             sysinfo(uint64 addr);
++uint64          get_nproc();
+ 
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 5247b91..3eedeed 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -91,3 +91,18 @@ kalloc(void)
+   return (void*)r;
+ }
+ 
++uint64
++get_freemem(void){
++  uint64 num_of_free_page;
++  num_of_free_page = 0;
++  struct run *r;
++  acquire(&kmem.lock);
++  r = kmem.freelist;
++  while (r){
++    r = r->next;
++    num_of_free_page += 1;
++    }
++    release(&kmem.lock);
++    return num_of_free_page * PGSIZE;
++}
++
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 7a7164d..4bc2c2c 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -5,6 +5,7 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ #include "defs.h"
++#include "sysinfo.h"
+ 
+ struct cpu cpus[NCPU];
+ 
+@@ -696,3 +697,27 @@ procdump(void)
+     printf("\n");
+   }
+ }
++
++int
++sysinfo(uint64 addr){
++  struct proc *p = myproc();
++  struct sysinfo info;
++  info.freemem = get_freemem();
++  info.nproc = get_nproc();
++  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
++    return -1;
++return 0;
++}
++
++uint64
++get_nproc(){
++  uint64 num_of_proc_UNUSED;
++  num_of_proc_UNUSED = 0;
++  struct proc *p;
++  for(p = proc; p < &proc[NPROC]; p++) {
++    if (p->state != UNUSED){
++      num_of_proc_UNUSED += 1;
++    }
++  }
++  return num_of_proc_UNUSED;
++}
+\ No newline at end of file
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index 03ee457..9c3a009 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -102,6 +102,7 @@ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
+ extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -128,6 +129,7 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
+ [SYS_trace]   sys_trace,
++[SYS_sysinfo] sys_sysinfo,
+ };
+ 
+ char *syscall_names[] = {
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index cc112b9..e153363 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -21,3 +21,4 @@
+ #define SYS_mkdir  20
+ #define SYS_close  21
+ #define SYS_trace  22
++#define SYS_sysinfo 23
+\ No newline at end of file
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index fb878e6..d3d222d 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,4 +1,4 @@
+ struct sysinfo {
+-  uint64 freemem;   // amount of free memory (bytes)
+-  uint64 nproc;     // number of process
+-};
++    uint64 freemem;
++    uint64 nproc;
++};
+\ No newline at end of file
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 2a89b68..f54e4ae 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -104,4 +104,11 @@ sys_trace(void)
+   p->trace_mask = mask;
+ 
+   return 0;
++}
++
++uint64
++sys_sysinfo(void) {
++  uint64 si;
++  argaddr(0, &si);
++  return sysinfo(si);
+ }
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index bd3b7f0..6d83095 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -1,4 +1,5 @@
+ struct stat;
++struct sysinfo;
+ 
+ // system calls
+ int fork(void);
+@@ -23,6 +24,7 @@ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+ int trace(int);
++int sysinfo(struct sysinfo*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 9c97b05..353a1f8 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -37,3 +37,4 @@ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
+ entry("trace");
++entry("sysinfo");
+\ No newline at end of file
+-- 
+2.43.0
+
+From abf1f3e7b06c20de2421fc5368a09de1eff09e39 Mon Sep 17 00:00:00 2001
+From: MyTruong2810 <xv6@Admin-PC.>
+Date: Wed, 27 Nov 2024 17:51:11 +0700
+Subject: [PATCH] add the sysinfo
+
+---
+ Makefile         |  4 +---
+ kernel/defs.h    |  3 +++
+ kernel/kalloc.c  | 15 +++++++++++++++
+ kernel/proc.c    | 25 +++++++++++++++++++++++++
+ kernel/syscall.c |  2 ++
+ kernel/syscall.h |  1 +
+ kernel/sysinfo.h |  6 +++---
+ kernel/sysproc.c |  7 +++++++
+ user/user.h      |  2 ++
+ user/usys.pl     |  1 +
+ 10 files changed, 60 insertions(+), 6 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 2d9a763..4515355 100644
+--- a/Makefile
++++ b/Makefile
+@@ -195,9 +195,7 @@ UPROGS=\
+ 	$U/_wc\
+ 	$U/_zombie\
+ 	$U/_trace\
+-
+-
+-
++	$U/_sysinfotest\
+ 
+ ifeq ($(LAB),syscall)
+ UPROGS += \
+diff --git a/kernel/defs.h b/kernel/defs.h
+index d1b6bb9..67cc67d 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,6 +63,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
++uint64          get_freemem(void);
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -106,6 +107,8 @@ void            yield(void);
+ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
++int             sysinfo(uint64 addr);
++uint64          get_nproc();
+ 
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 5247b91..3eedeed 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -91,3 +91,18 @@ kalloc(void)
+   return (void*)r;
+ }
+ 
++uint64
++get_freemem(void){
++  uint64 num_of_free_page;
++  num_of_free_page = 0;
++  struct run *r;
++  acquire(&kmem.lock);
++  r = kmem.freelist;
++  while (r){
++    r = r->next;
++    num_of_free_page += 1;
++    }
++    release(&kmem.lock);
++    return num_of_free_page * PGSIZE;
++}
++
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 7a7164d..4bc2c2c 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -5,6 +5,7 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ #include "defs.h"
++#include "sysinfo.h"
+ 
+ struct cpu cpus[NCPU];
+ 
+@@ -696,3 +697,27 @@ procdump(void)
+     printf("\n");
+   }
+ }
++
++int
++sysinfo(uint64 addr){
++  struct proc *p = myproc();
++  struct sysinfo info;
++  info.freemem = get_freemem();
++  info.nproc = get_nproc();
++  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
++    return -1;
++return 0;
++}
++
++uint64
++get_nproc(){
++  uint64 num_of_proc_UNUSED;
++  num_of_proc_UNUSED = 0;
++  struct proc *p;
++  for(p = proc; p < &proc[NPROC]; p++) {
++    if (p->state != UNUSED){
++      num_of_proc_UNUSED += 1;
++    }
++  }
++  return num_of_proc_UNUSED;
++}
+\ No newline at end of file
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index 03ee457..9c3a009 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -102,6 +102,7 @@ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
+ extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -128,6 +129,7 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
+ [SYS_trace]   sys_trace,
++[SYS_sysinfo] sys_sysinfo,
+ };
+ 
+ char *syscall_names[] = {
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index cc112b9..e153363 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -21,3 +21,4 @@
+ #define SYS_mkdir  20
+ #define SYS_close  21
+ #define SYS_trace  22
++#define SYS_sysinfo 23
+\ No newline at end of file
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index fb878e6..d3d222d 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,4 +1,4 @@
+ struct sysinfo {
+-  uint64 freemem;   // amount of free memory (bytes)
+-  uint64 nproc;     // number of process
+-};
++    uint64 freemem;
++    uint64 nproc;
++};
+\ No newline at end of file
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 2a89b68..f54e4ae 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -104,4 +104,11 @@ sys_trace(void)
+   p->trace_mask = mask;
+ 
+   return 0;
++}
++
++uint64
++sys_sysinfo(void) {
++  uint64 si;
++  argaddr(0, &si);
++  return sysinfo(si);
+ }
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index bd3b7f0..6d83095 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -1,4 +1,5 @@
+ struct stat;
++struct sysinfo;
+ 
+ // system calls
+ int fork(void);
+@@ -23,6 +24,7 @@ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+ int trace(int);
++int sysinfo(struct sysinfo*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 9c97b05..353a1f8 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -37,3 +37,4 @@ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
+ entry("trace");
++entry("sysinfo");
+\ No newline at end of file
+-- 
+2.43.0
+
