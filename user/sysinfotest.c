@@ -141,6 +141,28 @@ void testbad() {
   }
 }
 
+void testloadavg() {
+  struct sysinfo info;
+
+  sinfo(&info);
+
+  uint64 load1 = info.loadavg[0];
+  uint64 load5 = info.loadavg[1];
+  uint64 load15 = info.loadavg[2];
+
+  printf("Load averages: 1min: %ld, 5min: %ld, 15min: %ld\n", load1, load5, load15);
+
+  if (load1 < 0 || load5 < 0 || load15 < 0) {
+    printf("FAIL: Invalid load average values\n");
+    exit(1);
+  }
+
+  if (load1 > 10 || load5 > 10 || load15 > 10) {
+    printf("FAIL: Load average values are unexpectedly high\n");
+    exit(1);
+  }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -148,6 +170,7 @@ main(int argc, char *argv[])
   testcall();
   testmem();
   testproc();
+  testloadavg(); 
   printf("sysinfotest: OK\n");
   exit(0);
 }
