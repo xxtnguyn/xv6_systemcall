@@ -658,6 +658,93 @@ index 6e5dbb7..f54e4ae 100644
 \ No newline at end of file
 -- 
 2.45.2.windows.1
+From 1fd6c8c3bb5a64905b0e356b8ee37d90ea2f15bd Mon Sep 17 00:00:00 2001
+From: My Truong <truongthitumy2810@gmail.com>
+Date: Sat, 30 Nov 2024 00:13:16 +0700
+Subject: [PATCH] modified for challenge
+
+---
+ kernel/proc.c      |  8 +++-----
+ kernel/sysinfo.h   |  2 +-
+ user/sysinfotest.c | 10 ++++------
+ 3 files changed, 8 insertions(+), 12 deletions(-)
+
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 7c36e2d..1adeae6 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -7,7 +7,7 @@
+ #include "defs.h"
+ #include "sysinfo.h"
+ 
+-uint64 calculate_loadavg(int minutes);
++uint64 calculate_loadavg();
+ 
+ struct cpu cpus[NCPU];
+ 
+@@ -707,9 +707,7 @@ sysinfo(uint64 addr){
+   info.freemem = get_freemem();
+   info.nproc = get_nproc();
+   
+-  info.loadavg[0] = calculate_loadavg(1);
+-  info.loadavg[1] = calculate_loadavg(5);
+-  info.loadavg[2] = calculate_loadavg(15);
++  info.loadavg = calculate_loadavg();
+   
+   if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+     return -1;
+@@ -729,7 +727,7 @@ get_nproc(){
+   return num_of_proc_UNUSED;
+ }
+ 
+-uint64 calculate_loadavg(int minutes) {
++uint64 calculate_loadavg() {
+     uint64 load = 0;
+     struct proc *p;
+ 
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index 792a00f..8426e1f 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,5 +1,5 @@
+ struct sysinfo {
+     uint64 freemem;
+     uint64 nproc;
+-    uint64 loadavg[3]; 
++    uint64 loadavg; 
+ };
+\ No newline at end of file
+diff --git a/user/sysinfotest.c b/user/sysinfotest.c
+index 9c7f259..c48f047 100644
+--- a/user/sysinfotest.c
++++ b/user/sysinfotest.c
+@@ -146,18 +146,16 @@ void testloadavg() {
+ 
+   sinfo(&info);
+ 
+-  uint64 load1 = info.loadavg[0];
+-  uint64 load5 = info.loadavg[1];
+-  uint64 load15 = info.loadavg[2];
++  uint64 load = info.loadavg;
+ 
+-  printf("Load averages: 1min: %ld, 5min: %ld, 15min: %ld\n", load1, load5, load15);
++  printf("Load averages: %ld\n", load);
+ 
+-  if (load1 < 0 || load5 < 0 || load15 < 0) {
++  if (load < 0) {
+     printf("FAIL: Invalid load average values\n");
+     exit(1);
+   }
+ 
+-  if (load1 > 10 || load5 > 10 || load15 > 10) {
++  if (load > 10) {
+     printf("FAIL: Load average values are unexpectedly high\n");
+     exit(1);
+   }
+-- 
+2.45.2.windows.1
+
+
 
 
 
