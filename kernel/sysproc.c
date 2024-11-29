@@ -112,20 +112,3 @@ sys_sysinfo(void) {
   argaddr(0, &si);
   return sysinfo(si);
 }
-
-int
-sys_sysinfo(void) {
-  struct sysinfo *info;
-  if (argptr(0, (void*)&info, sizeof(*info)) < 0)
-    return -1;
-
-  info->freemem = get_freemem();
-
-  info->nproc = get_nproc();
-
-  info->loadavg[0] = calculate_loadavg(1);
-  info->loadavg[1] = calculate_loadavg(5);
-  info->loadavg[2] = calculate_loadavg(15);
-
-  return 0;
-}

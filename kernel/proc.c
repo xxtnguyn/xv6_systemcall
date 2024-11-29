@@ -7,6 +7,8 @@
 #include "defs.h"
 #include "sysinfo.h"
 
+uint64 calculate_loadavg(int minutes);
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -704,6 +706,11 @@ sysinfo(uint64 addr){
   struct sysinfo info;
   info.freemem = get_freemem();
   info.nproc = get_nproc();
+  
+  info.loadavg[0] = calculate_loadavg(1);
+  info.loadavg[1] = calculate_loadavg(5);
+  info.loadavg[2] = calculate_loadavg(15);
+  
   if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
     return -1;
 return 0;
@@ -722,16 +729,17 @@ get_nproc(){
   return num_of_proc_UNUSED;
 }
 
-uint64 
-calculate_loadavg(int minutes) {
-  uint64 load = 0;
-  struct proc *p;
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
-    if(p->state == RUNNING || p->state == SLEEPING) {
-      load++;
-    }
-  }
+uint64 calculate_loadavg(int minutes) {
+    uint64 load = 0;
+    struct proc *p;
 
-  return load;
+    // Count processes in RUNNING or SLEEPING states
+    for(p = proc; p < &proc[NPROC]; p++) {
+        if(p->state == RUNNING || p->state == SLEEPING) {
+            load++;
+        }
+    }
+
+    return load;
 }
+
