@@ -631,3 +631,28 @@ index a92d10a..9c7f259 100644
 2.45.2.windows.1
 
 
+From aae142c0d08668ad8a4f5959a0c5b4eeeb29fd5f Mon Sep 17 00:00:00 2001
+From: Dinh Tan Nhat <132115535+QuackPhuc@users.noreply.github.com>
+Date: Fri, 29 Nov 2024 22:46:34 +0700
+Subject: [PATCH] fix Q3 -> user mode
+
+---
+ answers-syscall.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/answers-syscall.txt b/answers-syscall.txt
+index 3c78ec6..3fa2a00 100644
+--- a/answers-syscall.txt
++++ b/answers-syscall.txt
+@@ -9,7 +9,7 @@ Q: What was the previous mode that the CPU was in?
+ A: Khi chạy lệnh ta được kết quả sau:
+ (gdp) p/x $sstatus
+ $2 = 0x200000022
+-Do đó, chế độ trước đó của CPU là Supervisor mode (chế độ giám sát).
++Do đó, chế độ trước đó của CPU là User mode (chế độ người dùng).
+ 
+ Q: Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable num?
+ A: thay num = p->trapframe->a7; thành num = * (int *) 0;
+-- 
+2.43.0
+
