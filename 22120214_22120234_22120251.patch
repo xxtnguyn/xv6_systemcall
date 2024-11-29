@@ -629,6 +629,101 @@ index a92d10a..9c7f259 100644
  }
 -- 
 2.45.2.windows.1
+From 1f9d1de511472b092c391400da1ad0c43bc7705a Mon Sep 17 00:00:00 2001
+From: My Truong <truongthitumy2810@gmail.com>
+Date: Fri, 29 Nov 2024 23:28:55 +0700
+Subject: [PATCH] modified some file for challenge
+
+---
+ kernel/proc.c    | 28 ++++++++++++++++++----------
+ kernel/sysproc.c | 19 +------------------
+ 2 files changed, 19 insertions(+), 28 deletions(-)
+
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 6b0480e..7c36e2d 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -7,6 +7,8 @@
+ #include "defs.h"
+ #include "sysinfo.h"
+ 
++uint64 calculate_loadavg(int minutes);
++
+ struct cpu cpus[NCPU];
+ 
+ struct proc proc[NPROC];
+@@ -704,6 +706,11 @@ sysinfo(uint64 addr){
+   struct sysinfo info;
+   info.freemem = get_freemem();
+   info.nproc = get_nproc();
++  
++  info.loadavg[0] = calculate_loadavg(1);
++  info.loadavg[1] = calculate_loadavg(5);
++  info.loadavg[2] = calculate_loadavg(15);
++  
+   if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+     return -1;
+ return 0;
+@@ -722,16 +729,17 @@ get_nproc(){
+   return num_of_proc_UNUSED;
+ }
+ 
+-uint64 
+-calculate_loadavg(int minutes) {
+-  uint64 load = 0;
+-  struct proc *p;
+-  
+-  for(p = proc; p < &proc[NPROC]; p++) {
+-    if(p->state == RUNNING || p->state == SLEEPING) {
+-      load++;
++uint64 calculate_loadavg(int minutes) {
++    uint64 load = 0;
++    struct proc *p;
++
++    // Count processes in RUNNING or SLEEPING states
++    for(p = proc; p < &proc[NPROC]; p++) {
++        if(p->state == RUNNING || p->state == SLEEPING) {
++            load++;
++        }
+     }
+-  }
+ 
+-  return load;
++    return load;
+ }
++
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 6e5dbb7..f54e4ae 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -111,21 +111,4 @@ sys_sysinfo(void) {
+   uint64 si;
+   argaddr(0, &si);
+   return sysinfo(si);
+-}
+-
+-int
+-sys_sysinfo(void) {
+-  struct sysinfo *info;
+-  if (argptr(0, (void*)&info, sizeof(*info)) < 0)
+-    return -1;
+-
+-  info->freemem = get_freemem();
+-
+-  info->nproc = get_nproc();
+-
+-  info->loadavg[0] = calculate_loadavg(1);
+-  info->loadavg[1] = calculate_loadavg(5);
+-  info->loadavg[2] = calculate_loadavg(15);
+-
+-  return 0;
+-}
++}
+\ No newline at end of file
+-- 
+2.45.2.windows.1
+
+
 
 
 From aae142c0d08668ad8a4f5959a0c5b4eeeb29fd5f Mon Sep 17 00:00:00 2001
