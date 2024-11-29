@@ -721,3 +721,17 @@ get_nproc(){
   }
   return num_of_proc_UNUSED;
 }
+
+uint64 
+calculate_loadavg(int minutes) {
+  uint64 load = 0;
+  struct proc *p;
+  
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if(p->state == RUNNING || p->state == SLEEPING) {
+      load++;
+    }
+  }
+
+  return load;
+}

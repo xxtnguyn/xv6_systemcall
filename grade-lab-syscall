@@ -65,39 +65,16 @@ def test_trace_children():
     r.match('^\\d+: syscall fork -> -1')
     r.match('^OK')
 
-# Helper function to run sysinfotest
-def run_sysinfotest():
-    r.run_qemu(shell_script(['sysinfotest']))
-    r.match('^sysinfotest: start')
-    r.match('^sysinfotest: OK')
+@test(14, "attack")
+def test_attack():
+    r.run_qemu(shell_script([
+        'attacktest'
+    ]))
+    r.match('^OK: secret is')
 
-@test(5, "testcall")
-def test_testcall():
-    # Checking if sysinfo works correctly for valid inputs
-    r.run_qemu(shell_script(['sysinfotest']))
-    r.match('^sysinfotest: start')
-    r.match('^sysinfotest: OK')
-
-@test(5, "testmem")
-def test_testmem():
-    # Check if memory tests pass, particularly checking free memory
-    r.run_qemu(shell_script(['sysinfotest']))
-    r.match('^sysinfotest: start')
-    r.match('^sysinfotest: OK')
-
-@test(5, "testproc")
-def test_testproc():
-    # Verify the process count behavior in sysinfo
-    r.run_qemu(shell_script(['sysinfotest']))
-    r.match('^sysinfotest: start')
-    r.match('^sysinfotest: OK')
-
-@test(5, "testbad")
-def test_testbad():
-    # Test for invalid sysinfo argument
-    r.run_qemu(shell_script(['sysinfotest']))
-    r.match('^sysinfotest: start')
-    r.match('^sysinfotest: OK')
+@test(1, "time")
+def test_time():
+    check_time()
 
 run_tests()
 
