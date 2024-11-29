@@ -1,3 +1,65 @@
+From 8257be621b36beb17cf3832efd6d6443a1c6c2bf Mon Sep 17 00:00:00 2001
+From: xxtnguyn <tn701212@gmail.com>
+Date: Fri, 29 Nov 2024 12:09:34 +0000
+Subject: [PATCH] answers-syscall.txt added
+
+---
+ answers-syscall.txt | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+ create mode 100644 answers-syscall.txt
+
+diff --git a/answers-syscall.txt b/answers-syscall.txt
+new file mode 100644
+index 0000000..3c78ec6
+--- /dev/null
++++ b/answers-syscall.txt
+@@ -0,0 +1,27 @@
++Q: Looking at the backtrace output, which function called syscall?
++A: Hàm usertrap (tại kernel/trap.c:67) đã gọi hàm syscall (tại kernel/syscall.c:133).
++
++Q: What is the value of p->trapframe->a7 and what does that value represent? (Hint: look user/initcode.S, the first user program xv6 starts.)
++Q: Giá trị của p->trapframe->a7 là 0x7. 
++Giá trị này đại diện cho mã số của gọi hệ thống (system call number). Cụ thể, 0x7 tương ứng với gọi hệ thống SYS_exec. 
++
++Q: What was the previous mode that the CPU was in?
++A: Khi chạy lệnh ta được kết quả sau:
++(gdp) p/x $sstatus
++$2 = 0x200000022
++Do đó, chế độ trước đó của CPU là Supervisor mode (chế độ giám sát).
++
++Q: Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable num?
++A: thay num = p->trapframe->a7; thành num = * (int *) 0;
++Tìm trong file kernel.kernel.asm. Ta thấy:
++num = * (int *) 0;
++    80001c92:	00002683          	lw	a3,0(zero) # 0 <_entry-0x80000000>
++Vậy thanh ghi a3 tương ứng với biến num.
++
++Q: Why does the kernel crash?
++A: Trong quá trình ánh xạ địa chỉ ảo, địa chỉ 0 không được ánh xạ tới bất kỳ địa chỉ vật lý nào. Tất cả các địa chỉ mà chúng ta sử dụng trong chương trình đều là địa chỉ ảo. Vì vậy đương nhiên là không thể lấy được giá trị tương ứng với nó.
++
++Q: What is the name of the binary that was running when the kernel paniced? What is its process id (pid)?
++A: Đặt điểm dừng ngay line 137. Chạy p p->name ta  được:
++$1 = initcode\000\000\000\000\000\000\000".
++Ta có process id là 1.
+-- 
+2.43.0
+
+From dbcdbc8a530ffb235a2ea7f320326269b52453ec Mon Sep 17 00:00:00 2001
+From: xxtnguyn <tn701212@gmail.com>
+Date: Tue, 26 Nov 2024 15:21:57 +0000
+Subject: [PATCH] tracing commit with challenge
+
+---
+ Makefile         |  1 +
+ kernel/proc.c    |  3 +++
+ kernel/proc.h    |  1 +
+ kernel/syscall.c | 65 ++++++++++++++++++++++++++++++++++++++++++++++++
+ kernel/syscall.h |  1 +
+ kernel/sysproc.c | 14 +++++++++++
+ user/user.h      |  1 +
+ user/usys.pl     |  1 +
+ 8 files changed, 87 insertions(+)
+
 diff --git a/Makefile b/Makefile
 index 74e454f..2d9a763 100644
 --- a/Makefile
@@ -182,6 +244,8 @@ index 01e426e..9c97b05 100755
  entry("sleep");
  entry("uptime");
 +entry("trace");
+-- 
+2.43.0
 
 From abf1f3e7b06c20de2421fc5368a09de1eff09e39 Mon Sep 17 00:00:00 2001
 From: MyTruong2810 <xv6@Admin-PC.>
