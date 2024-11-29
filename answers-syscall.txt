@@ -9,7 +9,7 @@ Q: What was the previous mode that the CPU was in?
 A: Khi chạy lệnh ta được kết quả sau:
 (gdp) p/x $sstatus
 $2 = 0x200000022
-Do đó, chế độ trước đó của CPU là Supervisor mode (chế độ giám sát).
+Do đó, chế độ trước đó của CPU là User mode (chế độ người dùng).
 
 Q: Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable num?
 A: thay num = p->trapframe->a7; thành num = * (int *) 0;
