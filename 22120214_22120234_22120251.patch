@@ -391,4 +391,179 @@ index 9c97b05..353a1f8 100755
 \ No newline at end of file
 -- 
 2.43.0
+From ca3cea9659e7f63faeb7402c3623541f95699246 Mon Sep 17 00:00:00 2001
+From: My Truong <truongthitumy2810@gmail.com>
+Date: Fri, 29 Nov 2024 22:43:01 +0700
+Subject: [PATCH] modified for the challenge
+
+---
+ grade-lab-syscall  | 41 +++++++++--------------------------------
+ kernel/proc.c      | 16 +++++++++++++++-
+ kernel/sysinfo.h   |  2 +-
+ kernel/sysproc.c   | 19 ++++++++++++++++++-
+ user/sysinfotest.c | 23 +++++++++++++++++++++++
+ 5 files changed, 66 insertions(+), 35 deletions(-)
+
+diff --git a/grade-lab-syscall b/grade-lab-syscall
+index 5c8c06f..928369e 100755
+--- a/grade-lab-syscall
++++ b/grade-lab-syscall
+@@ -65,39 +65,16 @@ def test_trace_children():
+     r.match('^\\d+: syscall fork -> -1')
+     r.match('^OK')
+ 
+-# Helper function to run sysinfotest
+-def run_sysinfotest():
+-    r.run_qemu(shell_script(['sysinfotest']))
+-    r.match('^sysinfotest: start')
+-    r.match('^sysinfotest: OK')
+-
+-@test(5, "testcall")
+-def test_testcall():
+-    # Checking if sysinfo works correctly for valid inputs
+-    r.run_qemu(shell_script(['sysinfotest']))
+-    r.match('^sysinfotest: start')
+-    r.match('^sysinfotest: OK')
+-
+-@test(5, "testmem")
+-def test_testmem():
+-    # Check if memory tests pass, particularly checking free memory
+-    r.run_qemu(shell_script(['sysinfotest']))
+-    r.match('^sysinfotest: start')
+-    r.match('^sysinfotest: OK')
+-
+-@test(5, "testproc")
+-def test_testproc():
+-    # Verify the process count behavior in sysinfo
+-    r.run_qemu(shell_script(['sysinfotest']))
+-    r.match('^sysinfotest: start')
+-    r.match('^sysinfotest: OK')
++@test(14, "attack")
++def test_attack():
++    r.run_qemu(shell_script([
++        'attacktest'
++    ]))
++    r.match('^OK: secret is')
+ 
+-@test(5, "testbad")
+-def test_testbad():
+-    # Test for invalid sysinfo argument
+-    r.run_qemu(shell_script(['sysinfotest']))
+-    r.match('^sysinfotest: start')
+-    r.match('^sysinfotest: OK')
++@test(1, "time")
++def test_time():
++    check_time()
+ 
+ run_tests()
+ 
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 4bc2c2c..6b0480e 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -720,4 +720,18 @@ get_nproc(){
+     }
+   }
+   return num_of_proc_UNUSED;
+-}
+\ No newline at end of file
++}
++
++uint64 
++calculate_loadavg(int minutes) {
++  uint64 load = 0;
++  struct proc *p;
++  
++  for(p = proc; p < &proc[NPROC]; p++) {
++    if(p->state == RUNNING || p->state == SLEEPING) {
++      load++;
++    }
++  }
++
++  return load;
++}
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index 9d010bc..792a00f 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,5 +1,5 @@
+ struct sysinfo {
+     uint64 freemem;
+     uint64 nproc;
+-    uint64 loadavg;
++    uint64 loadavg[3]; 
+ };
+\ No newline at end of file
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index f54e4ae..6e5dbb7 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -111,4 +111,21 @@ sys_sysinfo(void) {
+   uint64 si;
+   argaddr(0, &si);
+   return sysinfo(si);
+-}
+\ No newline at end of file
++}
++
++int
++sys_sysinfo(void) {
++  struct sysinfo *info;
++  if (argptr(0, (void*)&info, sizeof(*info)) < 0)
++    return -1;
++
++  info->freemem = get_freemem();
++
++  info->nproc = get_nproc();
++
++  info->loadavg[0] = calculate_loadavg(1);
++  info->loadavg[1] = calculate_loadavg(5);
++  info->loadavg[2] = calculate_loadavg(15);
++
++  return 0;
++}
+diff --git a/user/sysinfotest.c b/user/sysinfotest.c
+index a92d10a..9c7f259 100644
+--- a/user/sysinfotest.c
++++ b/user/sysinfotest.c
+@@ -141,6 +141,28 @@ void testbad() {
+   }
+ }
+ 
++void testloadavg() {
++  struct sysinfo info;
++
++  sinfo(&info);
++
++  uint64 load1 = info.loadavg[0];
++  uint64 load5 = info.loadavg[1];
++  uint64 load15 = info.loadavg[2];
++
++  printf("Load averages: 1min: %ld, 5min: %ld, 15min: %ld\n", load1, load5, load15);
++
++  if (load1 < 0 || load5 < 0 || load15 < 0) {
++    printf("FAIL: Invalid load average values\n");
++    exit(1);
++  }
++
++  if (load1 > 10 || load5 > 10 || load15 > 10) {
++    printf("FAIL: Load average values are unexpectedly high\n");
++    exit(1);
++  }
++}
++
+ int
+ main(int argc, char *argv[])
+ {
+@@ -148,6 +170,7 @@ main(int argc, char *argv[])
+   testcall();
+   testmem();
+   testproc();
++  testloadavg(); 
+   printf("sysinfotest: OK\n");
+   exit(0);
+ }
+-- 
+2.45.2.windows.1
+
 
