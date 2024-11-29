@@ -7,7 +7,7 @@
 #include "defs.h"
 #include "sysinfo.h"
 
-uint64 calculate_loadavg(int minutes);
+uint64 calculate_loadavg();
 
 struct cpu cpus[NCPU];
 
@@ -707,9 +707,7 @@ sysinfo(uint64 addr){
   info.freemem = get_freemem();
   info.nproc = get_nproc();
   
-  info.loadavg[0] = calculate_loadavg(1);
-  info.loadavg[1] = calculate_loadavg(5);
-  info.loadavg[2] = calculate_loadavg(15);
+  info.loadavg = calculate_loadavg();
   
   if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
     return -1;
@@ -729,7 +727,7 @@ get_nproc(){
   return num_of_proc_UNUSED;
 }
 
-uint64 calculate_loadavg(int minutes) {
+uint64 calculate_loadavg() {
     uint64 load = 0;
     struct proc *p;
 
